@@ -1,288 +1,274 @@
-# 🧠 Document Intelligence Engine
+# Layout-Aware Document Intelligence Engine
 
-> **Layout-Aware Multimodal Document Parsing** — Converting PDFs & images into validated, structured JSON with deterministic post-processing.
+## 1. HLD
 
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![HuggingFace](https://img.shields.io/badge/🤗-LayoutLMv3-FFD21E?style=flat)](https://huggingface.co/microsoft/layoutlmv3-base)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+### Architecture Diagram
 
----
+```text
+Clients / Batch Jobs
+        |
+        v
++------------------------------+
+| API Layer                    |
+| FastAPI app, request schema, |
+| upload validation, errors    |
++---------------+--------------+
+                |
+                v
++---------------+--------------+
+| Ingestion Layer              |
+| file validation, safe store, |
+| PDF/image page loading       |
++---------------+--------------+
+                |
+                v
++---------------+--------------+
+| Preprocessing Layer          |
+| image normalization, resize, |
+| orientation-safe transforms  |
++---------------+--------------+
+                |
+                v
++---------------+--------------+
+| OCR Layer                    |
+| text, bounding boxes,        |
+| confidence extraction        |
++---------------+--------------+
+                |
+                v
++---------------+--------------+
+| Multimodal Model Layer       |
+| LayoutLMv3 inference,        |
+| training hooks              |
++---------------+--------------+
+                |
+                v
++---------------+--------------+
+| Post-processing Layer        |
+| normalization, validation,   |
+| deterministic constraints    |
++---------------+--------------+
+                |
+                v
++---------------+--------------+
+| Evaluation Layer             |
+| field metrics, exact match,  |
+| ablation definitions         |
++---------------+--------------+
+                |
+                v
+Deterministic Structured JSON
 
-## 📌 Problem Statement
-
-Existing document extraction tools fail in one of two ways:
-
-| Approach | Failure Mode |
-|---|---|
-| Rule-based / template | Breaks on any layout variation |
-| LLM-based extraction | Non-deterministic, unreliable for production |
-
-This engine combines **LayoutLMv3** (vision + text + layout) with a **deterministic post-processing layer** to deliver production-grade, validated structured extractions every time.
-
----
-
-## 🏗️ System Architecture
-
-```
-PDF / Image
-    │
-    ▼
-┌─────────────────────────────┐
-│  Ingestion & Preprocessing  │  Skew correction, normalisation
-└──────────────┬──────────────┘
-               │
-    ▼
-┌─────────────────────────────┐
-│       OCR Engine            │  PaddleOCR (primary) / Tesseract
-│   tokens + bounding boxes   │
-└──────────────┬──────────────┘
-               │
-    ▼
-┌─────────────────────────────┐
-│    LayoutLMv3 (HuggingFace) │  Token classification
-│   KEY · VALUE · OTHER       │  KEY / VALUE / OTHER labels
-└──────────────┬──────────────┘
-               │
-    ▼
-┌─────────────────────────────┐
-│  Deterministic Post-Proc.   │  Regex validation, normalisation,
-│  (Non-negotiable layer)     │  cross-field constraints, confidence
-└──────────────┬──────────────┘
-               │
-    ▼
-┌─────────────────────────────┐
-│   Structured JSON Output    │  + constraint flags + confidence
-└─────────────────────────────┘
-               │
-    ▼
-  FastAPI  /parse-document
-```
-
----
-
-## ✨ Key Features
-
-- **Multimodal**: Jointly reasons over pixel layout, OCR tokens, and bounding boxes
-- **Deterministic**: Post-processing layer enforces field-level validation and cross-field constraints — same input, guaranteed same output
-- **Production API**: FastAPI with async support, file upload, and health checks
-- **Dockerised**: Single `docker compose up` to run the full stack
-- **Ablation-ready**: Three built-in ablation experiments to quantify each component's contribution
-- **Extensible**: Swap OCR backends, model checkpoints, or post-processing rules without touching the pipeline
-
----
-
-## 📂 Repository Structure
-
-```
-document-intelligence-engine/
-│
-├── src/
-│   ├── ingestion/
-│   │   ├── pdf_loader.py          # PDF → page image arrays (PyMuPDF)
-│   │   └── image_preprocessing.py # Skew correction, normalisation
-│   │
-│   ├── ocr/
-│   │   ├── ocr_engine.py          # PaddleOCR + Tesseract wrapper
-│   │   └── bbox_alignment.py      # BBox normalisation, IoU, reading order
-│   │
-│   ├── models/
-│   │   ├── layoutlm_model.py      # LayoutLMv3 inference wrapper
-│   │   ├── training.py            # HuggingFace Trainer setup
-│   │   └── inference.py           # End-to-end InferencePipeline
-│   │
-│   ├── postprocessing/
-│   │   ├── validation.py          # Regex field validators
-│   │   ├── normalization.py       # Date/currency normalisation, OCR typo fix
-│   │   └── constraints.py         # Cross-field consistency checks
-│   │
-│   ├── evaluation/
-│   │   ├── metrics.py             # Precision / Recall / F1 / Exact Match
-│   │   └── ablation.py            # 3 ablation experiments
-│   │
-│   ├── api/
-│   │   ├── main.py                # FastAPI app + CORS
-│   │   └── routes.py              # POST /parse-document
-│   │
-│   └── utils/
-│       ├── config.py              # Pydantic Settings (env-driven)
-│       └── logger.py              # Structured logging
-│
-├── data/
-│   ├── raw/                       # Original PDFs / images (gitignored)
-│   ├── processed/                 # Preprocessed data (gitignored)
-│   └── annotations/               # Ground-truth labels (gitignored)
-│
-├── notebooks/
-│   ├── exploration.ipynb          # EDA and data exploration
-│   └── experiments.ipynb          # Ablation + results visualisation
-│
-├── experiments/
-│   ├── logs/                      # Training logs
-│   └── checkpoints/               # Model checkpoints (gitignored)
-│
-├── docker/
-│   ├── Dockerfile
-│   └── docker-compose.yml
-│
-├── tests/
-│   └── test_pipeline.py           # Pytest suite (OCR, postproc, metrics)
-│
-├── .env.example                   # Environment variable template
-├── .gitignore
-├── requirements.txt
-└── README.md
+Infrastructure Layer: configs, env overrides, Docker, logging, tests
 ```
 
----
+### Data Flow
 
-## 🚀 Quick Start
-
-### 1. Clone & Install
-
-```bash
-git clone https://github.com/purvanshh/document-intelligence-engine.git
-cd document-intelligence-engine
-
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+```text
+UploadFile
+-> validate_upload()
+-> persist_validated_file()
+-> load_pages()
+-> ImageNormalizationService.normalize()
+-> OCRService.extract()
+-> LayoutLMv3InferenceService.predict()
+-> normalize_document()
+-> validate_document()
+-> apply_constraints()
+-> DocumentParseResponse
 ```
 
-### 2. Configure Environment
+### Module Interfaces
 
-```bash
-cp .env.example .env
-# Edit .env to set BASE_MODEL, OCR_BACKEND, etc.
+```text
+ingestion.validators.validate_upload(upload_file: UploadFile) -> ValidatedFile
+ingestion.file_loader.load_pages(document: ValidatedFile) -> list[IngestedPage]
+preprocessing.image_normalizer.ImageNormalizationService.normalize(page: IngestedPage) -> IngestedPage
+ocr.service.OCRService.extract(image_bytes: bytes, page_number: int) -> OCRResult
+multimodal.layoutlmv3.LayoutLMv3InferenceService.predict(ocr_result: OCRResult) -> ModelPrediction
+postprocessing.normalizer.normalize_document(payload: dict[str, object]) -> dict[str, object]
+postprocessing.validator.validate_document(payload: dict[str, object]) -> dict[str, object]
+postprocessing.deterministic.apply_constraints(payload: dict[str, object]) -> ConstraintResult
+services.pipeline.DocumentPipeline.process(document: ValidatedFile) -> DocumentProcessingResult
 ```
 
-### 3. Run the API
+## 2. LLD
 
-```bash
-uvicorn src.api.main:app --reload --port 8000
+### Module Breakdown
+
+```text
+src/document_intelligence_engine/api/app.py
+  FastAPI factory, router registration, exception mapping
+
+src/document_intelligence_engine/api/routes/health.py
+  Health endpoint
+
+src/document_intelligence_engine/api/routes/documents.py
+  Parse endpoint, upload-to-pipeline orchestration
+
+src/document_intelligence_engine/api/schemas/
+  Strict request/response models
+
+src/document_intelligence_engine/core/config.py
+  YAML config loading, env override merge, typed settings
+
+src/document_intelligence_engine/core/logging.py
+  Root logger initialization, JSON/plain formatter selection
+
+src/document_intelligence_engine/core/errors.py
+  Domain-specific exception hierarchy
+
+src/document_intelligence_engine/domain/contracts.py
+  Typed contracts for OCR, model, file, page, output payloads
+
+src/document_intelligence_engine/ingestion/validators.py
+  File type checks, signature validation, size limits, sanitization, malformed file rejection
+
+src/document_intelligence_engine/ingestion/file_loader.py
+  Safe persistence, PDF page rasterization, image loading
+
+src/document_intelligence_engine/preprocessing/image_normalizer.py
+  Deterministic page normalization
+
+src/document_intelligence_engine/ocr/base.py
+  OCR backend protocol
+
+src/document_intelligence_engine/ocr/service.py
+  Tesseract backend wrapper, OCR service boundary
+
+src/document_intelligence_engine/multimodal/layoutlmv3.py
+  LayoutLMv3 inference boundary
+
+src/document_intelligence_engine/multimodal/training.py
+  Training hook specification
+
+src/document_intelligence_engine/postprocessing/normalizer.py
+  Date/amount/string normalization
+
+src/document_intelligence_engine/postprocessing/validator.py
+  Field-level validators
+
+src/document_intelligence_engine/postprocessing/deterministic.py
+  Cross-field deterministic constraints
+
+src/document_intelligence_engine/evaluation/metrics.py
+  Exact match and field accuracy
+
+src/document_intelligence_engine/evaluation/ablations.py
+  Canonical ablation definitions
+
+src/document_intelligence_engine/services/pipeline.py
+  End-to-end pipeline orchestration
 ```
 
-API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+### Contracts, Errors, Logging
 
-### 4. Parse a Document
+```text
+Contracts
+  ValidatedFile: sanitized upload metadata + raw bytes
+  IngestedPage: page image bytes + dimensions + page number
+  OCRResult: OCRToken list + engine metadata
+  ModelPrediction: model labels + confidences + extracted entities
+  ConstraintResult: normalized output + flags
+  DocumentProcessingResult: final response contract
 
-```bash
-curl -X POST http://localhost:8000/parse-document \
-     -F "file=@invoice.pdf"
+Error Strategy
+  InvalidInputError -> HTTP 400
+  OCRProcessingError -> HTTP 502
+  ModelInferenceError -> HTTP 502
+  DocumentEngineError -> HTTP 500
+
+Logging Strategy
+  JSON logs to stdout
+  level controlled by config
+  module logger access through get_logger()
 ```
 
----
+## 3. Repo Structure
 
-## 🐳 Docker
-
-```bash
-# Build and start
-cd docker
-docker compose up --build
-
-# With MLflow tracking
-docker compose --profile mlops up
+```text
+.
+├── configs/                        # Centralized YAML configuration
+├── data/                           # Raw, processed, and annotation datasets
+│   ├── raw/                        # Source PDFs/images
+│   ├── processed/                  # Derived intermediate artifacts
+│   └── annotations/                # Ground-truth labels
+├── docker/                         # Container build and compose assets
+├── experiments/                    # Experiment outputs and run artifacts
+│   ├── runs/                       # Run metadata and tracking outputs
+│   └── artifacts/                  # Checkpoints and exported artifacts
+├── src/                            # Application source root
+│   └── document_intelligence_engine/
+│       ├── api/                    # FastAPI app, routes, schemas
+│       ├── core/                   # Config, logging, errors
+│       ├── domain/                 # Typed data contracts
+│       ├── ingestion/              # File validation and page loading
+│       ├── preprocessing/          # Image normalization
+│       ├── ocr/                    # OCR interfaces and backends
+│       ├── multimodal/             # LayoutLMv3 inference and training hooks
+│       ├── postprocessing/         # Normalization, validation, constraints
+│       ├── evaluation/             # Metrics and ablations
+│       └── services/               # End-to-end pipeline orchestration
+└── tests/                          # Unit and integration test suites
 ```
 
----
+## 4. Config System
 
-## 📊 Output Schema
-
-```json
-{
-  "invoice_number": "INV-1023",
-  "date": "2025-01-12",
-  "vendor": "ABC Pvt Ltd",
-  "total_amount": 1200.50,
-  "line_items": [
-    { "item": "Product A", "quantity": 2, "price": 400.0 }
-  ],
-  "confidence": {
-    "invoice_number": 0.92,
-    "total_amount": 0.88
-  },
-  "_constraint_flags": []
-}
+```text
+Primary config: configs/config.yaml
+Loader: src/document_intelligence_engine/core/config.py
+Env override prefix: DIE_
+Nested override format: DIE_<SECTION>__<FIELD>=value
+Example: DIE_API__PORT=8080
 ```
 
-`_constraint_flags` is populated when cross-field checks fail (e.g., `line_items_sum_mismatch`).
+## 5. Logging System
 
----
-
-## 🧪 Evaluation & Ablation
-
-### Run Tests
-
-```bash
-pytest tests/ -v --cov=src --cov-report=term-missing
+```text
+Module: src/document_intelligence_engine/core/logging.py
+Default sink: stdout
+Formats: JSON or plain text
+Levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
 ```
 
-### Target Metrics
+## 6. Security Setup
 
-| Metric | Target |
-|---|---|
-| Key-Value Extraction F1 | ≥ 0.80 |
-| Exact Match Accuracy | ≥ 0.70 |
-| OCR Error Recovery | +15–25% vs raw OCR |
-| API Latency | < 2s per document |
-
-### Ablation Studies
-
-Three experiments are implemented in `src/evaluation/ablation.py`:
-
-| Experiment | Purpose |
-|---|---|
-| **No layout embeddings** | Quantifies importance of spatial bounding boxes |
-| **OCR-only baseline** | Measures gain from the full multimodal pipeline |
-| **No post-processing** | Shows deterministic layer's impact on accuracy |
-
----
-
-## 🧠 Model Fine-Tuning
-
-```bash
-# Configure in .env then run:
-python -m src.models.training
+```text
+Allowed file types: PDF, PNG, JPEG, TIFF
+Controls:
+  extension validation
+  MIME validation
+  magic-number validation
+  max upload size enforcement
+  max PDF page enforcement
+  max image pixel enforcement
+  filename sanitization
+  malformed PDF/image rejection
+  non-root Docker runtime
 ```
 
-Datasets: [FUNSD](https://guillaumejaume.github.io/FUNSD/) · [CORD](https://github.com/clovaai/cord)
+## 7. requirements.txt
 
----
+```text
+Python version: 3.11.11
+Virtual environment:
+  python3.11 -m venv .venv
+  source .venv/bin/activate
+  pip install --upgrade pip
+  pip install -r requirements.txt
+```
 
-## 🔧 Tech Stack
+See `requirements.txt` for the fully pinned dependency set.
 
-| Layer | Technology |
-|---|---|
-| Backbone model | LayoutLMv3 (HuggingFace Transformers) |
-| Deep learning | PyTorch 2.x |
-| OCR | PaddleOCR / Tesseract |
-| Image processing | OpenCV, Pillow, PyMuPDF |
-| API | FastAPI + Uvicorn |
-| Configuration | Pydantic Settings |
-| Containerisation | Docker + Docker Compose |
-| MLOps (optional) | MLflow |
-| Testing | Pytest |
+## 8. .env Template
 
----
+See `.env.example`.
 
-## 📋 Milestones
+## 9. Starter Code Files
 
-- [ ] **Week 1** — Dataset setup, OCR pipeline, LayoutLMv3 fine-tuning
-- [ ] **Week 2** — Evaluation metrics, ablation studies, post-processing layer
-- [ ] **Week 3** — API, Docker deployment, demo UI, README polish
-
----
-
-## 🤝 Contributing
-
-1. Fork the repo
-2. Create a feature branch (`git checkout -b feat/my-feature`)
-3. Commit your changes (`git commit -m 'feat: add my feature'`)
-4. Push and open a PR
-
----
-
-## 📄 License
-
-MIT © [Purvansh](https://github.com/purvanshh)
+```text
+FastAPI app: src/document_intelligence_engine/api/app.py
+Config loader: src/document_intelligence_engine/core/config.py
+Logger setup: src/document_intelligence_engine/core/logging.py
+Entrypoint: src/document_intelligence_engine/entrypoint.py
+```
