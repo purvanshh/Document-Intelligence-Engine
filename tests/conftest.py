@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 
 from api.dependencies import RuntimeState
 from api.main import create_app
+from api.middleware import RateLimitMiddleware
 from document_intelligence_engine.core.config import get_settings
 from document_intelligence_engine.services.document_parser import DocumentParserService
 from document_intelligence_engine.services.model_runtime import LayoutAwareModelService
@@ -24,7 +25,9 @@ DATA_DIR = Path(__file__).resolve().parent / "data"
 def reset_test_state() -> None:
     get_settings.cache_clear()
     OCREngine.reset_instance()
+    RateLimitMiddleware._buckets.clear()
     yield
+    RateLimitMiddleware._buckets.clear()
     OCREngine.reset_instance()
     get_settings.cache_clear()
 
@@ -190,6 +193,7 @@ def runtime_state(settings) -> RuntimeState:
 @pytest_asyncio.fixture
 async def api_client(monkeypatch: pytest.MonkeyPatch, runtime_state: RuntimeState):
     monkeypatch.setattr(api_main, "build_runtime", lambda: runtime_state)
+    monkeypatch.setattr(api_main, "configure_logging", lambda: None)
     app = create_app()
     async with LifespanManager(app):
         transport = ASGITransport(app=app)
