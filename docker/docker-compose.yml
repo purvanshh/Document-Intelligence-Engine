@@ -10,3 +10,13 @@ services:
     volumes:
       - ../data:/app/data
       - ../experiments:/app/experiments
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  redis:
+    image: redis:7-alpine
+    profiles: ["async"]
+    ports:
+      - "6379:6379"

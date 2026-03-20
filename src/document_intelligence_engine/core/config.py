@@ -32,6 +32,10 @@ class APIConfig(BaseModel):
     workers: int
     cors_origins: list[str]
     max_upload_size_mb: int
+    request_id_header: str = "X-Request-ID"
+    rate_limit_per_minute: int = 120
+    max_batch_files: int = 10
+    batch_concurrency: int = 4
 
 
 class IngestionConfig(BaseModel):
@@ -58,6 +62,8 @@ class ModelConfig(BaseModel):
     device: str
     max_sequence_length: int
     batch_size: int
+    checkpoint_path: str | None = None
+    startup_validate_checkpoint: bool = False
 
 
 class PreprocessingConfig(BaseModel):
