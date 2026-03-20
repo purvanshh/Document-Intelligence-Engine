@@ -41,17 +41,20 @@ ocr:
   use_gpu: false
   det_limit_side_len: 960
   singleton_enabled: true
+  batch_size: 4
   paddleocr_model_dir: null
   tesseract_cmd: null
 
 model:
   layoutlmv3_model_name: microsoft/layoutlmv3-base
+  version: 0.1.0
   revision: main
   device: cpu
   max_sequence_length: 512
   batch_size: 4
   checkpoint_path: null
   startup_validate_checkpoint: false
+  cpu_fallback: true
 
 preprocessing:
   target_dpi: 200
@@ -130,6 +133,12 @@ evaluation:
     enabled: false
     uri: null
     experiment_name: document-intelligence-benchmarks
+
+performance:
+  enable_profiling: true
+  page_batch_size: 4
+  max_debug_tokens: 200
+  memory_cleanup_enabled: true
 
 logging:
   level: INFO

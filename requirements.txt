@@ -24,6 +24,7 @@ python-json-logger==3.2.1
 python-multipart==0.0.20
 pytesseract==0.3.13
 PyYAML==6.0.2
+ruff==0.11.2
 seqeval==1.2.2
 torch==2.6.0
 transformers==4.49.0

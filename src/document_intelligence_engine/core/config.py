@@ -52,18 +52,21 @@ class OCRConfig(BaseModel):
     use_gpu: bool = False
     det_limit_side_len: int = 960
     singleton_enabled: bool = True
+    batch_size: int = 4
     paddleocr_model_dir: str | None = None
     tesseract_cmd: str | None = None
 
 
 class ModelConfig(BaseModel):
     layoutlmv3_model_name: str
+    version: str = "0.1.0"
     revision: str
     device: str
     max_sequence_length: int
     batch_size: int
     checkpoint_path: str | None = None
     startup_validate_checkpoint: bool = False
+    cpu_fallback: bool = True
 
 
 class PreprocessingConfig(BaseModel):
@@ -123,6 +126,13 @@ class EvaluationConfig(BaseModel):
     tracking: EvaluationTrackingConfig
 
 
+class PerformanceConfig(BaseModel):
+    enable_profiling: bool = True
+    page_batch_size: int = 4
+    max_debug_tokens: int = 200
+    memory_cleanup_enabled: bool = True
+
+
 class LoggingConfig(BaseModel):
     level: str
     json: bool
@@ -160,6 +170,7 @@ class AppSettings(BaseModel):
     preprocessing: PreprocessingConfig
     postprocessing: PostprocessingConfig
     evaluation: EvaluationConfig
+    performance: PerformanceConfig
     logging: LoggingConfig
     security: SecurityConfig
 

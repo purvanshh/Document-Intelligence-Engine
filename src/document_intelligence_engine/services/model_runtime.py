@@ -1,0 +1,150 @@
+"""Model runtime and artifact management."""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Any
+
+from document_intelligence_engine.core.config import AppSettings
+from document_intelligence_engine.core.logging import get_logger
+
+
+logger = get_logger(__name__)
+
+
+class ModelRuntimeError(Exception):
+    """Raised when model runtime initialization or inference fails."""
+
+
+class LayoutAwareModelService:
+    """Startup-loaded model service with CPU fallback and artifact validation."""
+
+    def __init__(self, settings: AppSettings) -> None:
+        self._settings = settings
+        self._loaded = False
+        self._device = self._resolve_device(settings)
+        self._name = settings.model.layoutlmv3_model_name
+        self._version = settings.model.version
+
+    @property
+    def loaded(self) -> bool:
+        return self._loaded
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def version(self) -> str:
+        return self._version
+
+    @property
+    def device(self) -> str:
+        return self._device
+
+    def load(self) -> None:
+        checkpoint_path = self._settings.model.checkpoint_path
+        if self._settings.model.startup_validate_checkpoint and checkpoint_path:
+            resolved = Path(checkpoint_path).expanduser().resolve()
+            if not resolved.exists():
+                raise ModelRuntimeError(f"Model checkpoint not found: {resolved}")
+            if resolved.is_file() and resolved.stat().st_size == 0:
+                raise ModelRuntimeError(f"Model checkpoint is empty: {resolved}")
+        self._loaded = True
+        logger.info(
+            "model_loaded",
+            extra={"model_name": self._name, "model_version": self._version, "device": self._device},
+        )
+
+    def predict(self, ocr_tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not self._loaded:
+            raise ModelRuntimeError("Model runtime is not loaded.")
+        return heuristic_predict(ocr_tokens, self._settings.postprocessing.field_aliases)
+
+    def predict_text_only(self, ocr_tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return self.predict(ocr_tokens)
+
+    def predict_without_postprocessing(self, ocr_tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return self.predict(ocr_tokens)
+
+    @staticmethod
+    def _resolve_device(settings: AppSettings) -> str:
+        requested_device = settings.model.device.lower()
+        if requested_device not in {"cpu", "cuda"}:
+            return "cpu"
+        if requested_device == "cuda":
+            try:
+                import torch
+            except ImportError:
+                if settings.model.cpu_fallback:
+                    logger.warning("torch_missing_using_cpu_fallback")
+                    return "cpu"
+                raise ModelRuntimeError("Torch is not installed for CUDA execution.")
+            if torch.cuda.is_available():
+                return "cuda"
+            if settings.model.cpu_fallback:
+                logger.warning("cuda_unavailable_using_cpu_fallback")
+                return "cpu"
+            raise ModelRuntimeError("CUDA requested but no GPU is available.")
+        return "cpu"
+
+
+def heuristic_predict(
+    ocr_tokens: list[dict[str, Any]],
+    field_aliases: dict[str, str],
+) -> list[dict[str, Any]]:
+    if not ocr_tokens:
+        return []
+
+    normalized_tokens = [_normalize_token(token.get("text", "")) for token in ocr_tokens]
+    alias_sequences = {
+        alias: [part for part in alias.split(" ") if part]
+        for alias in sorted(field_aliases, key=lambda item: len(item.split()), reverse=True)
+    }
+    labels = ["O"] * len(ocr_tokens)
+    spans: list[tuple[int, int]] = []
+
+    index = 0
+    while index < len(ocr_tokens):
+        matched = False
+        for alias, alias_parts in alias_sequences.items():
+            end_index = index + len(alias_parts)
+            if end_index > len(ocr_tokens):
+                continue
+            if normalized_tokens[index:end_index] == alias_parts:
+                spans.append((index, end_index))
+                labels[index] = "B-KEY"
+                for offset in range(index + 1, end_index):
+                    labels[offset] = "I-KEY"
+                index = end_index
+                matched = True
+                break
+        if not matched:
+            index += 1
+
+    for span_index, (_, span_end) in enumerate(spans):
+        next_key_start = spans[span_index + 1][0] if span_index + 1 < len(spans) else len(ocr_tokens)
+        value_start = span_end
+        while value_start < next_key_start and _normalize_token(ocr_tokens[value_start].get("text", "")) in {"", ":"}:
+            value_start += 1
+        if value_start >= next_key_start:
+            continue
+        labels[value_start] = "B-VALUE"
+        for value_index in range(value_start + 1, next_key_start):
+            if _normalize_token(ocr_tokens[value_index].get("text", "")) == "":
+                continue
+            labels[value_index] = "I-VALUE"
+
+    return [
+        {
+            "text": str(token.get("text", "")),
+            "label": labels[index],
+            "confidence": round(float(token.get("confidence", 0.0)), 6),
+        }
+        for index, token in enumerate(ocr_tokens)
+    ]
+
+
+def _normalize_token(text: Any) -> str:
+    return re.sub(r"[^a-z0-9#]+", "", str(text).lower().strip())

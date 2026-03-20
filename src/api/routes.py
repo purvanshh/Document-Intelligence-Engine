@@ -39,11 +39,12 @@ async def parse_document(
     request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    debug: bool = False,
     runtime: RuntimeState = Depends(get_runtime),
 ) -> ParseDocumentResponse:
     staged_upload = await stage_upload(file, runtime.settings)
     background_tasks.add_task(cleanup_staged_upload, staged_upload.path)
-    document, metadata = await process_staged_upload(staged_upload, runtime)
+    document, metadata, _ = await process_staged_upload(staged_upload, runtime, debug=debug)
     metadata["request_id"] = get_request_id(request)
     logger.info(
         "document_parsed",
@@ -59,16 +60,17 @@ async def parse_batch(
     runtime: RuntimeState = Depends(get_runtime),
 ) -> BatchParseResponse:
     if not files:
-        raise InvalidUploadError("No files were provided.")
+        raise InvalidUploadError("No files were provided.", details=[{"field": "files", "issue": "missing"}])
     if len(files) > runtime.settings.api.max_batch_files:
         raise InvalidUploadError(
-            f"Batch size exceeds configured limit of {runtime.settings.api.max_batch_files} files."
+            f"Batch size exceeds configured limit of {runtime.settings.api.max_batch_files} files.",
+            details=[{"field": "files", "issue": "batch_limit_exceeded", "value": len(files)}],
         )
 
     results = await process_batch_uploads(files, runtime)
     request_id = get_request_id(request)
     items = []
-    for upload_file, (document, metadata) in zip(files, results, strict=False):
+    for upload_file, (document, metadata, _) in zip(files, results, strict=False):
         metadata["request_id"] = request_id
         items.append(ParseDocumentResponse(document=document, metadata=metadata))
         logger.info(

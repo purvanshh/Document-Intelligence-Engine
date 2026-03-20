@@ -69,6 +69,9 @@ class OCREngine:
 
         return tokens
 
+    def extract_batch_tokens(self, images: list[Image.Image]) -> list[list[dict[str, Any]]]:
+        return [self.extract_tokens(image) for image in images]
+
     def _initialize_backend(self) -> Any:
         if self._settings.backend.lower() != "paddleocr":
             raise OCRExecutionError(f"Unsupported OCR backend: {self._settings.backend}")

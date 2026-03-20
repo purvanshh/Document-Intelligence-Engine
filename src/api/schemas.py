@@ -35,8 +35,15 @@ class ResponseMetadata(BaseModel):
     content_type: str = Field(examples=["application/pdf"])
     size_bytes: int = Field(examples=[24576])
     processing_time_ms: float = Field(examples=[128.44])
+    timing: dict[str, float] = Field(
+        examples=[{"validation": 1.2, "load": 25.4, "preprocessing": 12.0, "ocr": 140.1, "model": 4.1, "postprocessing": 1.3, "total": 184.1}]
+    )
     confidence_summary: ConfidenceSummary
     page_count: int = Field(examples=[2])
+    warnings: list[str] = Field(default_factory=list, examples=[["noisy_ocr_output"]])
+    model: dict[str, str] = Field(
+        examples=[{"name": "microsoft/layoutlmv3-base", "version": "0.1.0", "device": "cpu"}]
+    )
 
 
 class ParseDocumentResponse(BaseModel):
@@ -66,6 +73,15 @@ class ParseDocumentResponse(BaseModel):
                     "content_type": "application/pdf",
                     "size_bytes": 24576,
                     "processing_time_ms": 128.44,
+                    "timing": {
+                        "validation": 1.2,
+                        "load": 25.4,
+                        "preprocessing": 12.0,
+                        "ocr": 140.1,
+                        "model": 4.1,
+                        "postprocessing": 1.3,
+                        "total": 184.1
+                    },
                     "confidence_summary": {
                         "average": 0.905,
                         "minimum": 0.88,
@@ -74,6 +90,12 @@ class ParseDocumentResponse(BaseModel):
                         "dropped_fields": 0,
                     },
                     "page_count": 1,
+                    "warnings": [],
+                    "model": {
+                        "name": "microsoft/layoutlmv3-base",
+                        "version": "0.1.0",
+                        "device": "cpu"
+                    }
                 },
             }
         }

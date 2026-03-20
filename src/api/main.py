@@ -13,6 +13,7 @@ from api.middleware import configure_middleware
 from api.routes import router
 from api.schemas import ErrorResponse
 from document_intelligence_engine.core.logging import configure_logging, get_logger
+from document_intelligence_engine.services.model_runtime import ModelRuntimeError
 from ingestion.exceptions import EmptyOCROutputError, InvalidFileError, OCRExecutionError, PDFLoadingError
 
 
@@ -62,6 +63,10 @@ def create_app() -> FastAPI:
     @app.exception_handler(OCRExecutionError)
     async def handle_ocr_error(request: Request, exc: OCRExecutionError) -> JSONResponse:
         return _error_response(request, str(exc), 502, [])
+
+    @app.exception_handler(ModelRuntimeError)
+    async def handle_model_runtime_error(request: Request, exc: ModelRuntimeError) -> JSONResponse:
+        return _error_response(request, str(exc), 503, [])
 
     @app.exception_handler(Exception)
     async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:

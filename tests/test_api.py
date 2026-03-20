@@ -16,6 +16,8 @@ def _png_bytes() -> bytes:
 
 class DummyModelService:
     loaded = True
+    version = "test"
+    device = "cpu"
 
     def predict(self, tokens):
         _ = tokens
@@ -24,15 +26,6 @@ class DummyModelService:
             {"text": "Number", "label": "I-KEY", "confidence": 0.96},
             {"text": "INV-1023", "label": "B-VALUE", "confidence": 0.95},
         ]
-
-
-class DummyRuntime:
-    def __init__(self, settings):
-        self.settings = settings
-        self.model_service = DummyModelService()
-        self.model_loaded = True
-        self.ocr_loaded = True
-        self.startup_error = None
 
 
 def test_health_endpoint(monkeypatch):
@@ -46,19 +39,43 @@ def test_health_endpoint(monkeypatch):
 def test_parse_document_valid_request(monkeypatch):
     app = create_app()
 
-    monkeypatch.setattr("api.dependencies.process_document", lambda path: [{"text": "Invoice", "confidence": 0.99}])
-    monkeypatch.setattr("api.dependencies._count_pages", lambda path: 1)
-    monkeypatch.setattr(
-        "api.dependencies.postprocess_predictions",
-        lambda predictions: {
-            "invoice_number": {"value": "INV-1023", "confidence": 0.95, "valid": True},
-            "_errors": [],
-            "_constraint_flags": [],
-        },
-    )
-
     with TestClient(app) as client:
         app.state.runtime.model_service = DummyModelService()
+        monkeypatch.setattr(
+            app.state.runtime.parser_service,
+            "parse_file",
+            lambda file_path, debug=False: {
+                "document": {
+                    "invoice_number": {"value": "INV-1023", "confidence": 0.95, "valid": True},
+                    "_errors": [],
+                    "_constraint_flags": [],
+                },
+                "metadata": {
+                    "filename": "invoice.png",
+                    "page_count": 1,
+                    "ocr_token_count": 3,
+                    "confidence_summary": {
+                        "average": 0.95,
+                        "minimum": 0.95,
+                        "maximum": 0.95,
+                        "kept_fields": 1,
+                        "dropped_fields": 0,
+                    },
+                    "timing": {
+                        "validation": 1.0,
+                        "load": 1.0,
+                        "preprocessing": 1.0,
+                        "ocr": 1.0,
+                        "bbox_alignment": 1.0,
+                        "model": 1.0,
+                        "postprocessing": 1.0,
+                        "total": 7.0,
+                    },
+                    "warnings": [],
+                    "model": {"name": "dummy", "version": "test", "device": "cpu"},
+                },
+            },
+        )
         response = client.post(
             "/parse-document",
             files={"file": ("invoice.png", _png_bytes(), "image/png")},
@@ -67,6 +84,7 @@ def test_parse_document_valid_request(monkeypatch):
         payload = response.json()
         assert payload["document"]["invoice_number"]["value"] == "INV-1023"
         assert payload["metadata"]["page_count"] == 1
+        assert payload["metadata"]["timing"]["total"] == 7.0
 
 
 def test_parse_document_invalid_file():
@@ -78,6 +96,7 @@ def test_parse_document_invalid_file():
         )
         assert response.status_code == 400
         assert response.json()["error"] == "Invalid file format"
+        assert response.json()["details"][0]["issue"] == "unsupported_extension"
 
 
 def test_parse_document_large_file(monkeypatch):
@@ -93,10 +112,14 @@ def test_parse_document_large_file(monkeypatch):
 
 def test_parse_document_error_handling(monkeypatch):
     app = create_app()
-    monkeypatch.setattr("api.dependencies.process_document", lambda path: (_ for _ in ()).throw(RuntimeError("boom")))
 
     with TestClient(app) as client:
         app.state.runtime.model_service = DummyModelService()
+        monkeypatch.setattr(
+            app.state.runtime.parser_service,
+            "parse_file",
+            lambda file_path, debug=False: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
         response = client.post(
             "/parse-document",
             files={"file": ("invoice.png", _png_bytes(), "image/png")},
