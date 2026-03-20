@@ -110,6 +110,21 @@ postprocessing:
     min_field_confidence: 0.60
     drop_below_threshold: true
 
+evaluation:
+  dataset_path: data/annotations/benchmark_samples.json
+  output_dir: experiments/runs/reports
+  partial_match_threshold: 0.80
+  confidence_thresholds:
+    - 0.50
+    - 0.60
+    - 0.75
+    - 0.90
+  error_example_limit: 5
+  tracking:
+    enabled: false
+    uri: null
+    experiment_name: document-intelligence-benchmarks
+
 logging:
   level: INFO
   json: true

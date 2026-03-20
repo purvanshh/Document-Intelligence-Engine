@@ -102,6 +102,21 @@ class PostprocessingConfig(BaseModel):
     confidence: PostprocessingConfidenceConfig
 
 
+class EvaluationTrackingConfig(BaseModel):
+    enabled: bool
+    uri: str | None = None
+    experiment_name: str = "document-intelligence-benchmarks"
+
+
+class EvaluationConfig(BaseModel):
+    dataset_path: str
+    output_dir: str
+    partial_match_threshold: float
+    confidence_thresholds: list[float]
+    error_example_limit: int
+    tracking: EvaluationTrackingConfig
+
+
 class LoggingConfig(BaseModel):
     level: str
     json: bool
@@ -138,6 +153,7 @@ class AppSettings(BaseModel):
     model: ModelConfig
     preprocessing: PreprocessingConfig
     postprocessing: PostprocessingConfig
+    evaluation: EvaluationConfig
     logging: LoggingConfig
     security: SecurityConfig
 
