@@ -72,6 +72,36 @@ class PreprocessingConfig(BaseModel):
     median_blur_kernel_size: int = 3
 
 
+class PostprocessingNormalizationConfig(BaseModel):
+    date_fields: list[str]
+    currency_fields: list[str]
+    artifact_map: dict[str, str]
+
+
+class PostprocessingValidationConfig(BaseModel):
+    regex_rules: dict[str, str]
+    required_fields: list[str]
+
+
+class PostprocessingConstraintsConfig(BaseModel):
+    amount_tolerance: float
+    allow_future_dates: bool
+    required_fields: list[str]
+
+
+class PostprocessingConfidenceConfig(BaseModel):
+    min_field_confidence: float
+    drop_below_threshold: bool
+
+
+class PostprocessingConfig(BaseModel):
+    field_aliases: dict[str, str]
+    normalization: PostprocessingNormalizationConfig
+    validation: PostprocessingValidationConfig
+    constraints: PostprocessingConstraintsConfig
+    confidence: PostprocessingConfidenceConfig
+
+
 class LoggingConfig(BaseModel):
     level: str
     json: bool
@@ -107,6 +137,7 @@ class AppSettings(BaseModel):
     ocr: OCRConfig
     model: ModelConfig
     preprocessing: PreprocessingConfig
+    postprocessing: PostprocessingConfig
     logging: LoggingConfig
     security: SecurityConfig
 

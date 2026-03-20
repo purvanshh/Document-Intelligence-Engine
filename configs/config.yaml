@@ -58,6 +58,58 @@ preprocessing:
   deskew: false
   median_blur_kernel_size: 3
 
+postprocessing:
+  field_aliases:
+    invoice number: invoice_number
+    invoice no: invoice_number
+    invoice #: invoice_number
+    date: date
+    invoice date: date
+    total amount: total_amount
+    total: total_amount
+    amount due: total_amount
+    subtotal: subtotal
+    tax: tax_amount
+    tax amount: tax_amount
+  normalization:
+    date_fields:
+      - date
+      - invoice_date
+      - due_date
+    currency_fields:
+      - total_amount
+      - subtotal
+      - tax_amount
+    artifact_map:
+      O: "0"
+      o: "0"
+      l: "1"
+      I: "1"
+      S: "5"
+  validation:
+    regex_rules:
+      invoice_number: "^[A-Za-z0-9][A-Za-z0-9_/-]{1,63}$"
+      date: "^\\d{4}-\\d{2}-\\d{2}$"
+      invoice_date: "^\\d{4}-\\d{2}-\\d{2}$"
+      due_date: "^\\d{4}-\\d{2}-\\d{2}$"
+      total_amount: "^-?\\d+(\\.\\d+)?$"
+      subtotal: "^-?\\d+(\\.\\d+)?$"
+      tax_amount: "^-?\\d+(\\.\\d+)?$"
+    required_fields:
+      - invoice_number
+      - date
+      - total_amount
+  constraints:
+    amount_tolerance: 0.01
+    allow_future_dates: false
+    required_fields:
+      - invoice_number
+      - date
+      - total_amount
+  confidence:
+    min_field_confidence: 0.60
+    drop_below_threshold: true
+
 logging:
   level: INFO
   json: true
