@@ -34,10 +34,21 @@ class APIConfig(BaseModel):
     max_upload_size_mb: int
 
 
+class IngestionConfig(BaseModel):
+    max_file_size_mb: int
+    pdf_dpi: int
+    supported_extensions: list[str]
+
+
 class OCRConfig(BaseModel):
     backend: str
     language: str
     min_confidence: float
+    use_angle_cls: bool = True
+    use_gpu: bool = False
+    det_limit_side_len: int = 960
+    singleton_enabled: bool = True
+    paddleocr_model_dir: str | None = None
     tesseract_cmd: str | None = None
 
 
@@ -53,6 +64,12 @@ class PreprocessingConfig(BaseModel):
     target_dpi: int
     max_image_side: int
     grayscale: bool
+    resize_max_width: int = 1600
+    resize_max_height: int = 1600
+    normalize_pixels: bool = True
+    noise_reduction: bool = True
+    deskew: bool = False
+    median_blur_kernel_size: int = 3
 
 
 class LoggingConfig(BaseModel):
@@ -86,6 +103,7 @@ class AppSettings(BaseModel):
     debug: bool
     paths: PathsConfig
     api: APIConfig
+    ingestion: IngestionConfig
     ocr: OCRConfig
     model: ModelConfig
     preprocessing: PreprocessingConfig
