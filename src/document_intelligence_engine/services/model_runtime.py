@@ -1,4 +1,9 @@
-"""Model runtime and artifact management."""
+"""Model runtime and artifact management.
+
+Loads LayoutLMv3InferenceService at startup. Falls back to heuristic
+prediction when no fine-tuned checkpoint exists and the fallback flag
+is enabled.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +23,7 @@ class ModelRuntimeError(Exception):
 
 
 class LayoutAwareModelService:
-    """Startup-loaded model service with CPU fallback and artifact validation."""
+    """Startup-loaded model service with real LayoutLMv3 inference & heuristic fallback."""
 
     def __init__(self, settings: AppSettings) -> None:
         self._settings = settings
@@ -26,6 +31,8 @@ class LayoutAwareModelService:
         self._device = self._resolve_device(settings)
         self._name = settings.model.layoutlmv3_model_name
         self._version = settings.model.version
+        self._using_heuristic = False
+        self._inference_service = None
 
     @property
     def loaded(self) -> bool:
@@ -43,27 +50,142 @@ class LayoutAwareModelService:
     def device(self) -> str:
         return self._device
 
+    @property
+    def using_heuristic(self) -> bool:
+        return self._using_heuristic
+
     def load(self) -> None:
+        """Load the model.
+
+        Tries to load a real LayoutLMv3 from a fine-tuned checkpoint.
+        If the checkpoint doesn't exist and ``use_heuristic_fallback`` is
+        True, falls back to the alias-matching heuristic.  Otherwise,
+        loads the base model (un-fine-tuned) for inference.
+        """
         checkpoint_path = self._settings.model.checkpoint_path
-        if self._settings.model.startup_validate_checkpoint and checkpoint_path:
-            resolved = Path(checkpoint_path).expanduser().resolve()
-            if not resolved.exists():
-                raise ModelRuntimeError(f"Model checkpoint not found: {resolved}")
-            if resolved.is_file() and resolved.stat().st_size == 0:
-                raise ModelRuntimeError(f"Model checkpoint is empty: {resolved}")
-        self._loaded = True
+        use_fallback = getattr(self._settings.model, "use_heuristic_fallback", True)
+
+        # Check for fine-tuned checkpoint
+        resolved_checkpoint: Path | None = None
+        if checkpoint_path:
+            best_path = Path(checkpoint_path).expanduser().resolve() / "best"
+            final_path = Path(checkpoint_path).expanduser().resolve() / "final"
+            base_path = Path(checkpoint_path).expanduser().resolve()
+
+            if best_path.exists() and (best_path / "config.json").exists():
+                resolved_checkpoint = best_path
+            elif final_path.exists() and (final_path / "config.json").exists():
+                resolved_checkpoint = final_path
+            elif base_path.exists() and (base_path / "config.json").exists():
+                resolved_checkpoint = base_path
+
+        if resolved_checkpoint is not None:
+            self._load_real_model(str(resolved_checkpoint))
+        elif use_fallback:
+            self._using_heuristic = True
+            self._loaded = True
+            logger.info(
+                "model_loaded_heuristic_fallback",
+                extra={"reason": "no_checkpoint", "model_name": self._name},
+            )
+        else:
+            # Load base model without fine-tuned weights
+            self._load_real_model(None)
+
         logger.info(
             "model_loaded",
-            extra={"model_name": self._name, "model_version": self._version, "device": self._device},
+            extra={
+                "model_name": self._name,
+                "model_version": self._version,
+                "device": self._device,
+                "mode": "heuristic" if self._using_heuristic else "layoutlmv3",
+            },
         )
+
+    def _load_real_model(self, checkpoint: str | None) -> None:
+        """Initialize LayoutLMv3InferenceService."""
+        from document_intelligence_engine.multimodal.layoutlmv3 import (
+            LayoutLMv3InferenceService,
+        )
+
+        try:
+            self._inference_service = LayoutLMv3InferenceService(
+                checkpoint_path=checkpoint,
+            )
+            self._inference_service.load()
+            self._using_heuristic = False
+            self._loaded = True
+        except Exception as exc:
+            use_fallback = getattr(self._settings.model, "use_heuristic_fallback", True)
+            if use_fallback:
+                logger.warning(
+                    "model_load_failed_using_heuristic",
+                    extra={"error": str(exc)},
+                )
+                self._using_heuristic = True
+                self._loaded = True
+            else:
+                raise ModelRuntimeError(f"Failed to load model: {exc}") from exc
 
     def predict(self, ocr_tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not self._loaded:
             raise ModelRuntimeError("Model runtime is not loaded.")
-        return heuristic_predict(ocr_tokens, self._settings.postprocessing.field_aliases)
+
+        if self._using_heuristic:
+            return heuristic_predict(ocr_tokens, self._settings.postprocessing.field_aliases)
+
+        # Real model inference
+        return self._predict_with_model(ocr_tokens)
+
+    def _predict_with_model(self, ocr_tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Run real LayoutLMv3 inference on OCR tokens."""
+        from document_intelligence_engine.domain.contracts import (
+            BoundingBox,
+            OCRResult,
+            OCRToken,
+        )
+
+        if not ocr_tokens:
+            return []
+
+        # Convert dict tokens to OCRResult
+        tokens = []
+        for token_dict in ocr_tokens:
+            bbox_data = token_dict.get("bbox", [0, 0, 0, 0])
+            if isinstance(bbox_data, list) and len(bbox_data) == 4:
+                bbox = BoundingBox(x0=bbox_data[0], y0=bbox_data[1], x1=bbox_data[2], y1=bbox_data[3])
+            elif isinstance(bbox_data, dict):
+                bbox = BoundingBox(**bbox_data)
+            else:
+                bbox = BoundingBox(x0=0, y0=0, x1=0, y1=0)
+
+            tokens.append(
+                OCRToken(
+                    text=str(token_dict.get("text", "")),
+                    bbox=bbox,
+                    confidence=float(token_dict.get("confidence", 0.0)),
+                    page_number=int(token_dict.get("page_number", 1)),
+                )
+            )
+
+        ocr_result = OCRResult(tokens=tokens, engine="pipeline", language="en")
+        prediction = self._inference_service.predict(ocr_result)
+
+        # Convert ModelPrediction to list of dicts for the postprocessing pipeline
+        results = []
+        for idx, token_dict in enumerate(ocr_tokens):
+            label = prediction.labels[idx] if idx < len(prediction.labels) else "O"
+            confidence = prediction.confidences[idx] if idx < len(prediction.confidences) else 0.0
+            results.append({
+                "text": str(token_dict.get("text", "")),
+                "label": label,
+                "confidence": round(float(confidence), 6),
+            })
+        return results
 
     def predict_text_only(self, ocr_tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return self.predict(ocr_tokens)
+        """Predict without layout features (for ablation)."""
+        return heuristic_predict(ocr_tokens, self._settings.postprocessing.field_aliases)
 
     def predict_without_postprocessing(self, ocr_tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return self.predict(ocr_tokens)
@@ -89,6 +211,10 @@ class LayoutAwareModelService:
             raise ModelRuntimeError("CUDA requested but no GPU is available.")
         return "cpu"
 
+
+# ---------------------------------------------------------------------------
+# Heuristic fallback (kept for backward compatibility + ablation)
+# ---------------------------------------------------------------------------
 
 def heuristic_predict(
     ocr_tokens: list[dict[str, Any]],

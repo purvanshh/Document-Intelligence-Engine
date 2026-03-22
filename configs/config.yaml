@@ -52,9 +52,20 @@ model:
   device: cpu
   max_sequence_length: 512
   batch_size: 4
-  checkpoint_path: null
+  checkpoint_path: experiments/artifacts/cord_finetuned
   startup_validate_checkpoint: false
   cpu_fallback: true
+  use_heuristic_fallback: true
+
+training:
+  num_epochs: 10
+  learning_rate: 5.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  gradient_accumulation_steps: 2
+  max_train_samples: null
+  save_dir: experiments/artifacts/cord_finetuned
+  eval_every_n_epochs: 1
 
 preprocessing:
   target_dpi: 200

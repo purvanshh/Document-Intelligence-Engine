@@ -67,6 +67,18 @@ class ModelConfig(BaseModel):
     checkpoint_path: str | None = None
     startup_validate_checkpoint: bool = False
     cpu_fallback: bool = True
+    use_heuristic_fallback: bool = True
+
+
+class TrainingConfig(BaseModel):
+    num_epochs: int = 10
+    learning_rate: float = 5e-5
+    weight_decay: float = 0.01
+    warmup_ratio: float = 0.1
+    gradient_accumulation_steps: int = 2
+    max_train_samples: int | None = None
+    save_dir: str = "experiments/artifacts/cord_finetuned"
+    eval_every_n_epochs: int = 1
 
 
 class PreprocessingConfig(BaseModel):
@@ -167,6 +179,7 @@ class AppSettings(BaseModel):
     ingestion: IngestionConfig
     ocr: OCRConfig
     model: ModelConfig
+    training: TrainingConfig = TrainingConfig()
     preprocessing: PreprocessingConfig
     postprocessing: PostprocessingConfig
     evaluation: EvaluationConfig
