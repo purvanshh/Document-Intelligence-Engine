@@ -69,17 +69,17 @@ preprocessing:
 
 postprocessing:
   field_aliases:
-    invoice number: invoice_number
-    invoice no: invoice_number
-    invoice #: invoice_number
+    "invoice number": invoice_number
+    "invoice no": invoice_number
+    "invoice #": invoice_number
     date: date
-    invoice date: date
-    total amount: total_amount
+    "invoice date": date
+    "total amount": total_amount
     total: total_amount
-    amount due: total_amount
+    "amount due": total_amount
     subtotal: subtotal
     tax: tax_amount
-    tax amount: tax_amount
+    "tax amount": tax_amount
   normalization:
     date_fields:
       - date
