@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Request, UploadFile
 
 from api import preview_lab
+from api import preview_lab_batch_vectors
 from api.dependencies import (
     InvalidUploadError,
     RuntimeState,
@@ -23,6 +24,7 @@ from document_intelligence_engine.core.logging import get_logger
 logger = get_logger(__name__)
 router = APIRouter()
 router.include_router(preview_lab.router)
+router.include_router(preview_lab_batch_vectors.router)
 
 
 @router.get("/health", response_model=HealthResponse, tags=["health"])
