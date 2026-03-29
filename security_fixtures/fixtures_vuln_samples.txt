@@ -1,0 +1,38 @@
+# Intentionally “bad pattern” snippets for scanners (NON-EXECUTABLE)
+
+## Command injection style (shell=True)
+subprocess.run("pdftotext " + user_supplied_path, shell=True)
+subprocess.run(f"convert {input_file} -resize {size} {out}", shell=True)
+
+## SQL injection style (string concatenation)
+query = "SELECT * FROM users WHERE email = '" + email + "'"
+query = f"DELETE FROM documents WHERE id = {doc_id}"
+
+## Hardcoded secrets (fake placeholders)
+STRIPE_API_KEY="sk_live_FAKE_51Kxxxyyyzzz"
+DB_PASSWORD="SuperSecretPassword123!"
+JWT_SECRET="dev-secret-do-not-rotate"
+
+## Unsafe deserialization / eval / exec patterns
+data = pickle.loads(blob)
+obj = yaml.load(payload, Loader=yaml.Loader)
+result = eval(user_expression)
+exec(user_code)
+
+## No input validation patterns
+path = request.query_params["path"]
+open(path, "rb").read()
+
+## Logging sensitive data
+logger.info("login attempt user=%s password=%s", username, password)
+
+## Bad async / blocking IO in async
+async def handler():
+    requests.get(url)  # blocking
+    time.sleep(2)      # blocking
+
+## Misc
+# commented-out blocks left behind
+# TODO: remove before prod
+# subprocess.run(cmd, shell=True)
+

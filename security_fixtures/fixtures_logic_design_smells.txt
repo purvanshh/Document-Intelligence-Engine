@@ -1,0 +1,47 @@
+# Intentionally “smelly” patterns for linters/review bots (NON-EXECUTABLE)
+
+## Off-by-one
+for i in range(len(items) - 1):  # misses last element
+    process(items[i])
+
+## Incorrect condition checks
+if user_role == "admin" or "staff":  # always truthy
+    allow()
+
+## Broken edge case handling
+avg = total / count  # count can be 0
+
+## Silent failures
+try:
+    do_work()
+except Exception:
+    pass
+
+## Race conditions / shared globals
+CACHE = {}
+def get_cached(k):
+    if k not in CACHE:
+        CACHE[k] = compute(k)   # no lock
+    return CACHE[k]
+
+## God function / tight coupling
+def do_everything(request, db, redis, s3, logger):
+    # 200 lines of mixed concerns, repeated logic, magic numbers
+    ...
+
+## Duplicated logic instead of abstraction
+def parse_a(x): return x.strip().lower()
+def parse_b(x): return x.strip().lower()
+def parse_c(x): return x.strip().lower()
+
+## Performance issues
+for a in items:
+    for b in items:
+        if a.id == b.id:
+            matches.append((a, b))
+
+## Memory leak-ish growth
+HISTORY=[]
+def record(x):
+    HISTORY.append(x)  # no bounds
+
