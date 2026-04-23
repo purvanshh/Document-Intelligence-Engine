@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import fitz
 from pdf2image import pdfinfo_from_path
 from PIL import Image, UnidentifiedImageError
 
@@ -41,10 +42,13 @@ def _validate_pdf(file_path: Path) -> None:
     settings = get_settings()
     try:
         info = pdfinfo_from_path(str(file_path))
+        page_count = int(info.get("Pages", 0))
     except Exception as exc:
-        raise InvalidFileError("PDF validation failed.") from exc
-
-    page_count = int(info.get("Pages", 0))
+        try:
+            with fitz.open(file_path) as document:
+                page_count = document.page_count
+        except Exception as fitz_exc:
+            raise InvalidFileError("PDF validation failed.") from fitz_exc
     if page_count <= 0:
         raise InvalidFileError("PDF contains no pages.")
     if page_count > settings.security.max_pdf_pages:

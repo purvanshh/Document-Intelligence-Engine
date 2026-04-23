@@ -46,7 +46,7 @@ ocr:
   tesseract_cmd: null
 
 model:
-  layoutlmv3_model_name: microsoft/layoutlmv3-base
+  layoutlmv3_model_name: jinhybr/OCR-LayoutLMv3-Invoice
   version: 0.1.0
   revision: main
   device: cpu

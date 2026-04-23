@@ -18,13 +18,10 @@ from document_intelligence_engine.core.config import get_settings
 from document_intelligence_engine.core.errors import ModelInferenceError
 from document_intelligence_engine.core.logging import get_logger
 from document_intelligence_engine.domain.contracts import ModelPrediction, OCRResult
-from document_intelligence_engine.multimodal.cord_dataset import (
-    ID2LABEL,
-    LABEL2ID,
-    NUM_LABELS,
-)
+from document_intelligence_engine.multimodal.cord_dataset import ID2LABEL, LABEL2ID, NUM_LABELS
 
 logger = get_logger(__name__)
+INVOICE_MODEL_NAME = "jinhybr/OCR-LayoutLMv3-Invoice"
 
 
 class LayoutLMv3InferenceService:
@@ -40,6 +37,7 @@ class LayoutLMv3InferenceService:
         self._checkpoint_path = checkpoint_path
         self._model: LayoutLMv3ForTokenClassification | None = None
         self._processor: LayoutLMv3Processor | None = None
+        self._model_id2label: dict[int, str] = {}
         self._loaded = False
 
     @property
@@ -47,32 +45,28 @@ class LayoutLMv3InferenceService:
         return self._loaded
 
     def load(self) -> None:
-        """Load model and processor from checkpoint or base model."""
-        model_name = self._settings.model.layoutlmv3_model_name
-        load_from = self._checkpoint_path or model_name
-
+        """Load the published invoice checkpoint and processor."""
         try:
-            logger.info("loading_layoutlmv3", extra={"source": str(load_from)})
+            logger.info("loading_layoutlmv3", extra={"source": INVOICE_MODEL_NAME})
 
             self._model = LayoutLMv3ForTokenClassification.from_pretrained(
-                str(load_from),
-                num_labels=NUM_LABELS,
-                id2label=ID2LABEL,
-                label2id=LABEL2ID,
+                INVOICE_MODEL_NAME,
             )
             self._model.to(self._device)
             self._model.eval()
+            self._model_id2label = {
+                int(label_id): label for label_id, label in self._model.config.id2label.items()
+            }
 
-            # Processor always from base model name (tokenizer + image processor)
             self._processor = LayoutLMv3Processor.from_pretrained(
-                model_name,
+                INVOICE_MODEL_NAME,
                 apply_ocr=False,
             )
 
             self._loaded = True
             logger.info(
                 "layoutlmv3_loaded",
-                extra={"source": str(load_from), "device": str(self._device)},
+                extra={"source": INVOICE_MODEL_NAME, "device": str(self._device)},
             )
         except Exception as exc:
             raise ModelInferenceError(f"Failed to load LayoutLMv3: {exc}") from exc
@@ -198,8 +192,8 @@ class LayoutLMv3InferenceService:
             return Image.open(BytesIO(page_image)).convert("RGB")
         return page_image.convert("RGB")
 
-    @staticmethod
     def _aggregate_word_predictions(
+        self,
         pred_ids: torch.Tensor,
         max_probs: torch.Tensor,
         word_ids: list[int | None],
@@ -219,7 +213,28 @@ class LayoutLMv3InferenceService:
             if word_id >= num_words:
                 continue
             seen_words.add(word_id)
-            labels[word_id] = ID2LABEL.get(pred_ids[token_idx].item(), "O")
+            raw_label = self._model_id2label.get(pred_ids[token_idx].item(), ID2LABEL.get(0, "O"))
+            labels[word_id] = LayoutLMv3InferenceService._remap_label(raw_label)
             confidences[word_id] = round(max_probs[token_idx].item(), 6)
 
         return labels, confidences
+
+    @staticmethod
+    def _remap_label(label: str) -> str:
+        """Map third-party receipt labels back into the project's BIO schema."""
+        if label == "O":
+            return "O"
+        if label.startswith("B-"):
+            return "B-VALUE"
+        if label.startswith("I-"):
+            return "I-VALUE"
+        normalized = label.strip().lower()
+        if normalized in {"ignore", "others"}:
+            return "O"
+        if normalized.endswith("_key") or normalized.endswith(".key"):
+            return "B-KEY"
+        if normalized.endswith("_value") or normalized.endswith(".value"):
+            return "B-VALUE"
+        if len(ID2LABEL) == NUM_LABELS and label in LABEL2ID:
+            return label
+        return "O"

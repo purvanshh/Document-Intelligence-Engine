@@ -59,7 +59,11 @@ def test_load_document_images_raises_pdf_loading_error(sample_pdf_path, monkeypa
     def _raise(*args, **kwargs):
         raise RuntimeError("bad pdf")
 
+    def _raise_fitz(*args, **kwargs):
+        raise RuntimeError("fitz bad pdf")
+
     monkeypatch.setattr("ingestion.pdf_loader.convert_from_path", _raise)
+    monkeypatch.setattr("ingestion.pdf_loader.fitz.open", _raise_fitz)
 
     with pytest.raises(PDFLoadingError, match="Unable to convert PDF to images"):
         load_document_images(sample_pdf_path)
